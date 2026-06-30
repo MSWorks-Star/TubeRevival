@@ -2,27 +2,103 @@ import os
 import tarfile
 import tempfile
 import time
+import socket
 
-# =====================================================
-# 1. Ввод IP-адреса компьютера
-# =====================================================
-ip = input("Введите локальный IP твоего компьютера (например, 192.168.1.100): ").strip()
-if not ip:
-    print("IP не введён. Выход.")
+# ============================================================
+# 1. ВЫБОР ЯЗЫКА
+# ============================================================
+def get_lang():
+    # Попробуем прочитать из .env (если есть)
+    if os.path.exists(".env"):
+        with open(".env", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("APP_LANG="):
+                    lang = line.strip().split("=")[1].strip().lower()
+                    if lang in ("ru", "en"):
+                        return lang
+    # Если нет, спрашиваем
+    print("Select language / Выберите язык:")
+    print("1. Русский")
+    print("2. English")
+    choice = input("Enter 1 or 2 / Введите 1 или 2: ").strip()
+    if choice == "1":
+        return "ru"
+    else:
+        return "en"
+
+LANG = get_lang()
+
+# ============================================================
+# 2. ТЕКСТЫ
+# ============================================================
+TEXTS = {
+    "ru": {
+        "ip_detected": "Ваш текущий IP: {ip}. Использовать его? (Y/N)",
+        "ip_manual": "Введите IP вручную (например, 192.168.1.100): ",
+        "ip_invalid": "Неверный IP. Попробуйте снова.",
+        "building": "Собираем .deb...",
+        "done": "Готово! .deb создан: {path}",
+        "transfer": "Перенеси его на iPhone и установи через iFile/Filza.",
+        "no_ip": "IP не введён. Выход.",
+        "no_env": "Нет файла .env для сохранения языка.",
+    },
+    "en": {
+        "ip_detected": "Your current IP: {ip}. Use it? (Y/N)",
+        "ip_manual": "Enter IP manually (e.g., 192.168.1.100): ",
+        "ip_invalid": "Invalid IP. Try again.",
+        "building": "Building .deb...",
+        "done": "Done! .deb created: {path}",
+        "transfer": "Transfer it to iPhone and install via iFile/Filza.",
+        "no_ip": "No IP entered. Exiting.",
+        "no_env": "No .env file to save language.",
+    }
+}
+
+# ============================================================
+# 3. ОПРЕДЕЛЕНИЕ IP
+# ============================================================
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1'
+    finally:
+        s.close()
+    return ip
+
+# ============================================================
+# 4. ОСНОВНАЯ ЛОГИКА
+# ============================================================
+ip = get_local_ip()
+print(TEXTS[LANG]["ip_detected"].format(ip=ip))
+choice = input().strip().lower()
+if choice == 'y':
+    final_ip = ip
+else:
+    while True:
+        final_ip = input(TEXTS[LANG]["ip_manual"]).strip()
+        if final_ip:
+            break
+        print(TEXTS[LANG]["ip_invalid"])
+
+if not final_ip:
+    print(TEXTS[LANG]["no_ip"])
     exit()
 
-# =====================================================
-# 2. Подготовка структуры папок
-# =====================================================
+# ============================================================
+# 5. ПОДГОТОВКА СТРУКТУРЫ
+# ============================================================
 deb_name = "com.tuberevival.tweak_1.0_iphoneos-arm.deb"
 tmp = tempfile.mkdtemp()
 root = os.path.join(tmp, "root")
 os.makedirs(os.path.join(root, "DEBIAN"))
 os.makedirs(os.path.join(root, "etc"))
 
-# =====================================================
-# 3. Создаём файл control
-# =====================================================
+# ============================================================
+# 6. ФАЙЛ CONTROL
+# ============================================================
 control_content = f"""Package: com.tuberevival.tweak
 Name: TubeRevival
 Version: 1.0
@@ -36,32 +112,31 @@ Section: Tweaks
 with open(os.path.join(root, "DEBIAN", "control"), "w", encoding="utf-8") as f:
     f.write(control_content)
 
-# =====================================================
-# 4. Создаём файл hosts с перенаправлением (без f-строки с отступами)
-# =====================================================
+# ============================================================
+# 7. ФАЙЛ HOSTS
+# ============================================================
 hosts_content = "127.0.0.1\tlocalhost\n"
 hosts_content += "::1\t\tlocalhost\n\n"
 hosts_content += "# TubeRevival: перенаправление на твой ПК\n"
-hosts_content += f"{ip}\twww.youtube.com\n"
-hosts_content += f"{ip}\tyoutube.com\n"
-hosts_content += f"{ip}\tm.youtube.com\n"
-hosts_content += f"{ip}\tytimg.com\n"
-hosts_content += f"{ip}\ts.ytimg.com\n"
-hosts_content += f"{ip}\ti.ytimg.com\n"
-hosts_content += f"{ip}\twww.googleapis.com\n"
-hosts_content += f"{ip}\tgoogleapis.com\n"
-hosts_content += f"{ip}\tggpht.com\n"
-hosts_content += f"{ip}\tgdata.youtube.com\n"
+hosts_content += f"{final_ip}\twww.youtube.com\n"
+hosts_content += f"{final_ip}\tyoutube.com\n"
+hosts_content += f"{final_ip}\tm.youtube.com\n"
+hosts_content += f"{final_ip}\tytimg.com\n"
+hosts_content += f"{final_ip}\ts.ytimg.com\n"
+hosts_content += f"{final_ip}\ti.ytimg.com\n"
+hosts_content += f"{final_ip}\twww.googleapis.com\n"
+hosts_content += f"{final_ip}\tgoogleapis.com\n"
+hosts_content += f"{final_ip}\tggpht.com\n"
+hosts_content += f"{final_ip}\tgdata.youtube.com\n"
 
 with open(os.path.join(root, "etc", "hosts"), "w", encoding="utf-8") as f:
     f.write(hosts_content)
 
-# =====================================================
-# 5. Собираем .deb вручную (ar + tar)
-# =====================================================
-print("Собираем .deb...")
+# ============================================================
+# 8. СБОРКА .deb
+# ============================================================
+print(TEXTS[LANG]["building"])
 
-# 5.1. data.tar.gz
 data_tar = os.path.join(tmp, "data.tar")
 with tarfile.open(data_tar, "w:gz") as tar:
     for item in os.listdir(root):
@@ -70,17 +145,14 @@ with tarfile.open(data_tar, "w:gz") as tar:
         full = os.path.join(root, item)
         tar.add(full, arcname=item)
 
-# 5.2. control.tar.gz
 control_tar = os.path.join(tmp, "control.tar")
 with tarfile.open(control_tar, "w:gz") as tar:
     tar.add(os.path.join(root, "DEBIAN", "control"), arcname="control")
 
-# 5.3. debian-binary
 binary_path = os.path.join(tmp, "debian-binary")
 with open(binary_path, "w") as f:
     f.write("2.0\n")
 
-# 5.4. Создаём ar-архив (.deb)
 deb_path = os.path.join(os.getcwd(), deb_name)
 with open(deb_path, "wb") as deb:
     deb.write(b"!<arch>\n")
@@ -96,23 +168,37 @@ with open(deb_path, "wb") as deb:
         header = name + mtime + uid + gid + mode + size_str + magic
         deb.write(header)
 
-    # debian-binary
     with open(binary_path, "rb") as f:
         data = f.read()
     write_ar_header("debian-binary", len(data))
     deb.write(data)
 
-    # control.tar.gz
     with open(control_tar, "rb") as f:
         data = f.read()
     write_ar_header("control.tar.gz", len(data))
     deb.write(data)
 
-    # data.tar.gz
     with open(data_tar, "rb") as f:
         data = f.read()
     write_ar_header("data.tar.gz", len(data))
     deb.write(data)
 
-print(f"Готово! .deb создан: {deb_path}")
-print("Перенеси его на iPhone и установи через iFile/Filza.")
+print(TEXTS[LANG]["done"].format(path=deb_path))
+print(TEXTS[LANG]["transfer"])
+
+# ============================================================
+# 9. СОХРАНЯЕМ ЯЗЫК В .env (если его нет)
+# ============================================================
+if not os.path.exists(".env"):
+    with open(".env", "w", encoding="utf-8") as f:
+        f.write(f"APP_LANG={LANG}\n")
+        f.write("YOUTUBE_API_KEY=ваш_ключ_сюда\n")
+        f.write("GOOGLE_CLIENT_ID=ваш_client_id_сюда\n")
+        f.write("GOOGLE_CLIENT_SECRET=ваш_client_secret_сюда\n")
+else:
+    # Проверим, есть ли APP_LANG, если нет – добавим
+    with open(".env", "r", encoding="utf-8") as f:
+        content = f.read()
+    if "APP_LANG" not in content:
+        with open(".env", "a", encoding="utf-8") as f:
+            f.write(f"\nAPP_LANG={LANG}\n")
